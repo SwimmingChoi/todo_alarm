@@ -32,7 +32,8 @@ def register_autostart() -> None:
     """로그인 시 자동 실행 등록 (HKCU라 관리자 권한 불필요). 매 실행마다 현재 경로로 갱신."""
     import winreg
 
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+    # 새로 만든 계정에는 Run 키가 없을 수 있어 OpenKey 대신 CreateKeyEx (없으면 생성)
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
         winreg.SetValueEx(key, APP_ID, 0, winreg.REG_SZ, f'"{sys.executable}" {STARTUP_FLAG}')
 
 
