@@ -1,0 +1,63 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Self test
+        run: python schedule.py
+
+      - name: Build EXE
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pyinstaller --onefile --noconsole --name todo_alarm todo_alarm.py
+
+      # 첫 실행 경로 확인: 죽지 않고 떠 있는지, 일정 파일 생성과 자동 실행 등록이 됐는지.
+      # 화면은 스크린샷으로 남겨 눈으로 확인한다.
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $p = Start-Process dist/todo_alarm.exe -PassThru
+          Start-Sleep 15
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $s = [System.Windows.Forms.SystemInformation]::VirtualScreen
+          $bmp = New-Object System.Drawing.Bitmap $s.Width, $s.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($s.Location, [System.Drawing.Point]::Empty, $s.Size)
+          $bmp.Save("$PWD/screenshot.png")
+          if ($p.HasExited) { throw "exe exited early" }
+          if (-not (Test-Path "$env:APPDATA/todo_alarm/*.txt")) { throw "schedule file not created" }
+          $run = Get-ItemPropertyValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' todo_alarm
+          if ($run -notlike '"*todo_alarm.exe" --startup') { throw "unexpected autostart value: $run" }
+          taskkill /F /T /IM todo_alarm.exe
+
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshot
+          path: screenshot.png
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: todo_alarm-windows
+          path: dist/todo_alarm.exe
+          retention-days: 30
+          if-no-files-found: error
